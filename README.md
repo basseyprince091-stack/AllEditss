@@ -297,3 +297,19 @@ ADAPTED for your setup: no one else is there to operate a moving camera, so the
 camera stays put and YOU provide the movement; this reads differently, and is a
 real substitution
 ```
+
+## JOBS — long operations in the background
+
+```bash
+alledits jobs submit --kind ingest --clips ./footage --workdir ./work --watch
+alledits jobs submit --kind edit --clips ./footage --reference ref.mp4 \
+                     --music track.wav --instruction "cinematic" --workdir ./work
+alledits jobs list --workdir ./work
+alledits jobs cancel --id job_xxxx --workdir ./work
+```
+
+Jobs persist across processes, so a client that reconnects sees what happened.
+Cancellation is cooperative — it takes effect at the next progress step, so the
+render stops at a known point rather than being torn down mid-encode. A job
+interrupted by a crash is reported as interrupted with its outcome unknown,
+never left showing as still running.

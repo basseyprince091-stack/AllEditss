@@ -8,7 +8,7 @@ Phases complete: **0 (vertical slice)**, **1 (brief → creative constraints)**,
 **2 (project state + human override)**, **3 (footage rescue)**, **4 (sound)**,
 **5 (FIND)**, **6 (MASTER)**, **7 (AUTOPILOT)**, **8 (STYLE)**, **9 (DIRECTOR)**, **10 (anchoring)**,
 **11 (model orchestration)**, **12 (nothing is wasted)**,
-**13 (shoot assistant)**, **14 (creator profile)**.
+**13 (shoot assistant)**, **14 (creator profile)**, **15 (async jobs)**.
 
 Every mode named in the specification is now implemented and verified.
 
@@ -557,7 +557,42 @@ Three defects found while proving it:
   for anyone who never passed the flag — a saved `minimal` profile rendered full
   beginner output. The flag now defaults to None and overrides only when given.
 
-**Test suite: 164/164 passing** (`python3 tests/test_alledits.py`).
+### Phase 15 — asynchronous jobs (Spec §28)
+
+`core/jobs.py` already existed with `Job`, `JobState` and `InlineJobQueue`, was
+imported in one file, and `.submit()` was **never called anywhere** — the fifth
+time a subsystem turned out to be written but unwired. Checking first saved
+rewriting it.
+
+Three things were genuinely missing, and each blocks a UI:
+
+| added | why |
+|---|---|
+| `BackgroundJobQueue` on a thread pool | inline running blocks the caller for the length of a render |
+| persistence on every state change | a job that vanishes with the process cannot be reported to a client that reconnects |
+| cooperative cancellation | a render cannot be safely killed mid-ffmpeg |
+| `pipeline/tasks.py` | ingest / edit / autopilot / master, all with one `progress=` signature |
+
+Verified on real work, not toys: an ingest of 17 clips ran through the queue with
+18 progress reports; a full edit was **cancelled at 70% during preview render**
+and came back `cancelled` with `error=None`, because a user stopping a render did
+nothing wrong.
+
+Two honesty decisions worth naming:
+
+- A job left `RUNNING` on disk is recovered as **failed with "the process ended
+  while this job was running, so its outcome is unknown"**. No thread is carrying
+  it any more, so showing it as live would be a lie, and guessing that it
+  finished would be worse.
+- Progress advances by pipeline **stage**, not by log volume. Deriving a
+  percentage from how much text has been printed would be a fabricated number.
+
+Distributed queueing is deliberately not built: it needs infrastructure this
+environment does not have, and stubbing it would be the same failure as a fake
+model provider. The `JobQueue` interface is what a Redis/RQ worker pool would
+implement.
+
+**Test suite: 173/173 passing** (`python3 tests/test_alledits.py`).
 All five proof harnesses pass: `ab_brief_test`, `rescue_test`, `sound_test`,
 `find_test`, `master_test`.
 

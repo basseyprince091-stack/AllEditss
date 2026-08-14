@@ -2276,6 +2276,136 @@ def test_profile_does_not_infer_skill_from_footage():
         assert leak not in src, f"profile module reads {leak} from footage"
 
 
+# ------------------------------------------------------ async jobs (Phase 15)
+def _slow_task(n=6, progress=None):
+    import time
+    for i in range(n):
+        progress((i + 1) / n, f"step {i + 1}")
+        time.sleep(0.05)
+    return {"done": n}
+
+
+def test_job_reaches_success_with_progress_recorded():
+    import tempfile
+    from alledits.core.jobs import BackgroundJobQueue, JobState
+    with tempfile.TemporaryDirectory() as d:
+        q = BackgroundJobQueue(root=d)
+        j = q.submit("demo", _slow_task, 4)
+        q.wait(j.id, 30)
+        q.shutdown()
+    assert j.state == JobState.SUCCEEDED
+    assert j.result == {"done": 4} and j.progress == 1.0
+    ps = [s["p"] for s in j.steps if "p" in s]
+    assert ps == sorted(ps), f"progress must not go backwards: {ps}"
+
+
+def test_job_failure_is_captured_not_swallowed():
+    import tempfile
+    from alledits.core.jobs import BackgroundJobQueue, JobState
+    def boom(progress=None):
+        raise ValueError("bad input")
+    with tempfile.TemporaryDirectory() as d:
+        q = BackgroundJobQueue(root=d)
+        j = q.submit("demo", boom)
+        q.wait(j.id, 30)
+        q.shutdown()
+    assert j.state == JobState.FAILED
+    assert "bad input" in j.error
+    assert any("traceback" in s for s in j.steps), "the traceback must be kept"
+
+
+def test_cancellation_is_not_reported_as_a_failure():
+    """A user stopping a render did nothing wrong."""
+    import tempfile, time
+    from alledits.core.jobs import BackgroundJobQueue, JobState
+    with tempfile.TemporaryDirectory() as d:
+        q = BackgroundJobQueue(root=d)
+        j = q.submit("demo", _slow_task, 200)
+        time.sleep(0.2)
+        assert q.cancel(j.id) is True
+        q.wait(j.id, 30)
+        q.shutdown()
+    assert j.state == JobState.CANCELLED
+    assert j.error is None, "cancelling is not an error"
+    assert 0.0 < j.progress < 1.0, "it should stop partway, not complete"
+
+
+def test_cancelling_a_finished_job_is_refused():
+    import tempfile
+    from alledits.core.jobs import BackgroundJobQueue
+    with tempfile.TemporaryDirectory() as d:
+        q = BackgroundJobQueue(root=d)
+        j = q.submit("demo", _slow_task, 2)
+        q.wait(j.id, 30)
+        assert q.cancel(j.id) is False
+        q.shutdown()
+
+
+def test_jobs_persist_and_reload_in_a_new_queue():
+    """A UI that reconnects must be able to see what happened."""
+    import tempfile
+    from alledits.core.jobs import BackgroundJobQueue, JobState
+    with tempfile.TemporaryDirectory() as d:
+        q = BackgroundJobQueue(root=d)
+        j = q.submit("demo", _slow_task, 3)
+        q.wait(j.id, 30)
+        q.shutdown()
+        fresh = BackgroundJobQueue(root=d)
+        back = fresh.get(j.id)
+        fresh.shutdown()
+    assert back is not None and back.state == JobState.SUCCEEDED
+    assert back.result == {"done": 3}
+
+
+def test_a_job_orphaned_by_a_crash_is_not_left_running_forever():
+    """No thread is carrying it any more, so showing it as live would be a lie."""
+    import json, tempfile
+    from alledits.core.jobs import BackgroundJobQueue, Job, JobState
+    with tempfile.TemporaryDirectory() as d:
+        orphan = Job(id="job_orphan", kind="edit")
+        orphan.state = JobState.RUNNING
+        orphan.progress = 0.6
+        (Path(d) / "job_orphan.json").write_text(json.dumps(orphan.to_dict()))
+        q = BackgroundJobQueue(root=d)
+        got = q.get("job_orphan")
+        q.shutdown()
+    assert got.state == JobState.FAILED
+    assert "interrupted" in got.error and "unknown" in got.error
+
+
+def test_jobs_can_be_filtered_by_project_and_state():
+    import tempfile
+    from alledits.core.jobs import BackgroundJobQueue
+    with tempfile.TemporaryDirectory() as d:
+        q = BackgroundJobQueue(root=d)
+        a = q.submit("demo", _slow_task, 2, project_id="p1")
+        b = q.submit("demo", _slow_task, 2, project_id="p2")
+        q.wait(a.id, 30)
+        q.wait(b.id, 30)
+        assert [j.id for j in q.list(project_id="p1")] == [a.id]
+        assert len(q.list(state="succeeded")) == 2
+        q.shutdown()
+
+
+def test_every_task_accepts_the_progress_signature_the_queue_calls():
+    """A task that does not take progress= would fail only at runtime, after
+    the user submitted it."""
+    import inspect
+    from alledits.pipeline.tasks import TASKS
+    assert set(TASKS) >= {"ingest", "edit", "autopilot", "master"}
+    for name, fn in TASKS.items():
+        assert "progress" in inspect.signature(fn).parameters, name
+
+
+def test_inline_queue_still_works_for_synchronous_callers():
+    """The pre-existing queue must keep working — it is the zero-infrastructure
+    path the vertical slice was built on."""
+    from alledits.core.jobs import InlineJobQueue, JobState
+    q = InlineJobQueue()
+    j = q.submit("demo", _slow_task, 2)
+    assert j.state == JobState.SUCCEEDED and q.get(j.id) is j
+
+
 if __name__ == "__main__":
     # Collection is by globals(), so two tests sharing a name would silently
     # shadow each other and one would never run. That happened once and cost

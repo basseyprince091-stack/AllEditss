@@ -342,6 +342,79 @@ def cmd_shoot(a):
     sys.exit(f"unknown shoot action {a.action!r}")
 
 
+def _queue(a):
+    from .core.jobs import BackgroundJobQueue
+    root = getattr(a, "jobs_dir", None) or (Path(a.workdir) / "jobs")
+    return BackgroundJobQueue(root=root)
+
+
+def cmd_jobs(a):
+    """Submit, watch, list and cancel background jobs (Spec 28)."""
+    import time
+    from .core.jobs import JobState
+    from .pipeline.tasks import TASKS
+    q = _queue(a)
+
+    if a.action == "list":
+        jobs = q.list(state=a.state)
+        if not jobs:
+            print("no jobs")
+        for j in jobs:
+            print(f"  {j.id}  {j.kind:10} {j.state.value:10} "
+                  f"{j.progress:5.0%}  {j.elapsed:6.1f}s  {j.message[:44]}")
+        return 0
+
+    if a.action == "show":
+        j = q.get(a.id) if a.id else None
+        if j is None:
+            sys.exit(f"no job {a.id!r}")
+        print(json.dumps(j.to_dict(), indent=2, default=str))
+        return 0
+
+    if a.action == "cancel":
+        if not a.id:
+            sys.exit("cancel requires --id")
+        ok = q.cancel(a.id)
+        print("cancellation requested; it takes effect at the next progress step"
+              if ok else "job is already finished — nothing to cancel")
+        return 0 if ok else 1
+
+    if a.action == "submit":
+        if a.kind not in TASKS:
+            sys.exit(f"kind must be one of: {', '.join(sorted(TASKS))}")
+        kwargs = {}
+        if a.kind == "ingest":
+            kwargs = dict(clips_dir=a.clips, workdir=a.workdir)
+        elif a.kind == "edit":
+            kwargs = dict(clips_dir=a.clips, reference=a.reference, music=a.music,
+                          instruction=a.instruction or "", workdir=a.workdir,
+                          duration=a.duration, deliver=a.deliver)
+        elif a.kind == "autopilot":
+            kwargs = dict(clips_dir=a.clips, reference=a.reference, music=a.music,
+                          workdir=a.workdir, duration=a.duration, deliver=a.deliver)
+        elif a.kind == "master":
+            kwargs = dict(src=a.input, out=a.output, profile=a.profile)
+        job = q.submit(a.kind, TASKS[a.kind], **kwargs)
+        print(f"submitted {job.id} ({a.kind})")
+        if not a.watch:
+            print(f"watch it with: alledits jobs show --id {job.id}")
+            q.shutdown(wait=True)
+            return 0
+        last = -1.0
+        while not job.state.terminal:
+            if job.progress != last:
+                last = job.progress
+                print(f"  {job.progress:5.0%}  {job.message[:60]}")
+            time.sleep(0.5)
+        print(f"\n{job.state.value}: {job.message or job.error or ''}")
+        if job.result:
+            print(json.dumps(job.result, indent=2, default=str))
+        q.shutdown(wait=True)
+        return 0 if job.state == JobState.SUCCEEDED else 1
+
+    sys.exit(f"unknown jobs action {a.action!r}")
+
+
 def cmd_capabilities(a):
     """What this install can do, what it cannot, and what would unlock it."""
     from .intelligence.capabilities import default_registry
@@ -626,6 +699,26 @@ def main(argv=None):
                     help="concepts to stop explaining, comma-separated")
     pr.add_argument("--profile-path", dest="profile_path", default=None)
     pr.set_defaults(fn=cmd_profile)
+
+    jb = sub.add_parser("jobs", help="run long operations in the background")
+    jb.add_argument("action", choices=["submit", "list", "show", "cancel"])
+    jb.add_argument("--kind", default="edit",
+                    choices=["ingest", "edit", "autopilot", "master"])
+    jb.add_argument("--id", default=None)
+    jb.add_argument("--state", default=None)
+    jb.add_argument("--watch", action="store_true")
+    jb.add_argument("--clips", default=None)
+    jb.add_argument("--reference", default=None)
+    jb.add_argument("--music", default=None)
+    jb.add_argument("--instruction", default="")
+    jb.add_argument("--duration", type=float, default=12.0)
+    jb.add_argument("--deliver", default=None)
+    jb.add_argument("--input", default=None)
+    jb.add_argument("--output", default=None)
+    jb.add_argument("--profile", default="youtube_shorts")
+    jb.add_argument("--workdir", default="./alledits_work")
+    jb.add_argument("--jobs-dir", dest="jobs_dir", default=None)
+    jb.set_defaults(fn=cmd_jobs)
 
     cp = sub.add_parser("capabilities",
                         help="what this install can do, and what is missing")
