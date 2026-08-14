@@ -313,3 +313,19 @@ Cancellation is cooperative — it takes effect at the next progress step, so th
 render stops at a known point rather than being torn down mid-encode. A job
 interrupted by a crash is reported as interrupted with its outcome unknown,
 never left showing as still running.
+
+## The web interface
+
+```bash
+alledits serve --workdir ./work        # http://127.0.0.1:8080
+```
+
+Start an edit or autopilot, watch progress, cancel mid-render, play the result,
+and give notes in plain language. The centre of the page is the **cut list**:
+each clip sized by its real duration, coloured by whether it is still on the
+beat, and hovering shows why that shot was chosen.
+
+Zero dependencies — standard library only.
+
+If a capability is missing from your install, the page says so and hides the
+control. It will not show you a button that does nothing.

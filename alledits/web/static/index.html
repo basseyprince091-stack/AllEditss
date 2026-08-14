@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ALLEDITS</title>
+<style>
+/* ---------------------------------------------------------------- tokens
+   The product's identity is measurement: it explains every cut. So every
+   measured value is set in monospace, and the interface is a lit desk around
+   a dark monitor, the way a grading suite actually looks. */
+:root{
+  --ink:#171A1C;          /* graphite */
+  --ink-2:#4A5257;
+  --ink-3:#7C868C;
+  --desk:#EDEFF1;         /* cool light grey, the lit desk */
+  --panel:#FFFFFF;
+  --monitor:#0E1113;      /* the dark monitor */
+  --line:#D4D9DD;
+  --signal:#0F7A7D;       /* teal: measured, confirmed */
+  --caution:#9A6606;      /* amber: unverified or capped */
+  --stop:#A33A2A;         /* failure */
+  --locked:#0F7A7D;
+  --unlocked:#B8912F;
+  --display:"Helvetica Neue","Arial Narrow",Inter,system-ui,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--desk);color:var(--ink);font-family:var(--body);
+  font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+/* --------------------------------------------------------------- masthead */
+header{
+  background:var(--monitor);color:#EDEFF1;padding:18px 24px;
+  display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;
+}
+.wordmark{
+  font-family:var(--display);font-weight:700;font-size:22px;
+  letter-spacing:.24em;text-transform:uppercase;
+}
+.tagline{color:#8A959B;font-size:13px}
+.caps{margin-left:auto;font-family:var(--mono);font-size:12px;color:#8A959B}
+main{max-width:1240px;margin:0 auto;padding:24px;display:grid;
+  grid-template-columns:360px 1fr;gap:24px;align-items:start}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:3px;
+  padding:18px;margin-bottom:20px}
+h2{font-family:var(--display);font-size:12px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-2);margin:0 0 14px;font-weight:700}
+label{display:block;font-size:12px;color:var(--ink-2);margin:12px 0 4px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);
+  border-radius:2px;font-family:var(--mono);font-size:12.5px;background:#FBFCFC;
+  color:var(--ink)}
+input:focus,select:focus,textarea:focus,button:focus-visible{
+  outline:2px solid var(--signal);outline-offset:1px}
+button{font-family:var(--body);font-size:14px;padding:9px 16px;border-radius:2px;
+  border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.hint{font-size:12px;color:var(--ink-3);margin-top:6px}
+/* ------------------------------------------------------------------- jobs */
+.job{border-top:1px solid var(--line);padding:10px 0;font-size:13px}
+.job:first-of-type{border-top:none}
+.job-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.kind{font-family:var(--display);letter-spacing:.1em;text-transform:uppercase;
+  font-size:11px;font-weight:700}
+.state{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:2px;
+  border:1px solid currentColor}
+.state.running{color:var(--signal)}
+.state.succeeded{color:var(--signal)}
+.state.failed{color:var(--stop)}
+.state.cancelled{color:var(--ink-3)}
+.state.pending{color:var(--ink-3)}
+.bar{height:3px;background:var(--line);margin-top:7px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--signal);width:0;
+  transition:width .3s ease}
+.msg{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:5px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* --------------------------------------------------- signature: the cut list
+   Each clip is a segment sized by its real duration. Colour says whether it is
+   still locked to the beat. Hovering gives the reason it was chosen — the thing
+   that makes this an editorial engine rather than a video tool. */
+.cutlist{display:flex;width:100%;height:46px;border:1px solid var(--line);
+  background:var(--monitor);overflow:hidden;margin:4px 0 10px}
+.cut{position:relative;border-right:1px solid #000;cursor:default;
+  display:flex;align-items:flex-end;min-width:2px;
+  background:linear-gradient(180deg,#20262A,#151A1D)}
+.cut:last-child{border-right:none}
+.cut i{display:block;width:100%;height:4px;background:var(--locked)}
+.cut.unlocked i{background:var(--unlocked)}
+.cut.salvage i{background:var(--caution)}
+.cut:hover{background:linear-gradient(180deg,#2C343A,#1B2225)}
+.cut span{position:absolute;top:5px;left:5px;font-family:var(--mono);
+  font-size:9.5px;color:#7E8B92}
+.legend{font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  display:flex;gap:14px;flex-wrap:wrap}
+.legend b{font-weight:400;color:var(--ink-2)}
+.swatch{display:inline-block;width:9px;height:3px;vertical-align:middle;
+  margin-right:4px}
+/* ---------------------------------------------------------------- readouts */
+video{width:100%;background:#000;border-radius:2px;display:block}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td,th{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);
+  vertical-align:top}
+th{font-family:var(--display);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:700}
+td.num,.mono{font-family:var(--mono);font-size:12px}
+.ok{color:var(--signal)}.warn{color:var(--caution)}.bad{color:var(--stop)}
+.reason{font-size:12px;color:var(--ink-2);line-height:1.45}
+.empty{color:var(--ink-3);font-size:13px;padding:6px 0}
+.banner{border-left:3px solid var(--caution);background:#FDF8EE;padding:10px 12px;
+  font-size:12.5px;margin-bottom:14px}
+.banner b{font-family:var(--display);letter-spacing:.1em;text-transform:uppercase;
+  font-size:10.5px;display:block;margin-bottom:3px;color:var(--caution)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">Alledits</div>
+  <div class="tagline">every cut, and why</div>
+  <div class="caps" id="caps">reading capabilities…</div>
+</header>
+
+<main>
+  <!-- ------------------------------------------------------------ controls -->
+  <div>
+    <section>
+      <h2>Make an edit</h2>
+      <label for="clips">Footage folder</label>
+      <input id="clips" value="/home/claude/testmedia/clips">
+      <label for="music">Music track</label>
+      <input id="music" value="/home/claude/testmedia/music.wav">
+      <label for="reference">Reference edit</label>
+      <input id="reference" value="/home/claude/testmedia/reference.mp4">
+      <label for="instruction">Direction</label>
+      <input id="instruction" placeholder="cinematic, slow and restrained">
+      <label for="duration">Length (seconds)</label>
+      <input id="duration" type="number" value="8" min="2" max="120">
+      <label for="deliver">Deliver for</label>
+      <select id="deliver"><option value="">don't master</option></select>
+      <div class="row">
+        <button id="run">Start edit</button>
+        <button id="auto" class="ghost">Autopilot</button>
+      </div>
+      <div class="hint">Autopilot tries several treatments, critiques each
+        rendered result, and keeps the best.</div>
+    </section>
+
+    <section>
+      <h2>Jobs</h2>
+      <div id="jobs"><div class="empty">Nothing running.</div></div>
+    </section>
+
+    <section>
+      <h2>Give a note</h2>
+      <textarea id="note" rows="2"
+        placeholder="hold the second shot longer, no flashes"></textarea>
+      <div class="row">
+        <button id="check" class="ghost">Check note</button>
+        <button id="apply">Apply note</button>
+      </div>
+      <div id="noteout" class="hint"></div>
+    </section>
+  </div>
+
+  <!-- ------------------------------------------------------------- results -->
+  <div>
+    <section>
+      <h2>The edit</h2>
+      <div id="player"><div class="empty">No render yet. Start an edit and it
+        appears here.</div></div>
+      <div id="cuts"></div>
+    </section>
+
+    <section>
+      <h2>Why these cuts</h2>
+      <div id="reasons"><div class="empty">Each clip will explain why it was
+        chosen, and whether it is still locked to the beat.</div></div>
+    </section>
+
+    <section>
+      <h2>Sound &amp; delivery</h2>
+      <div id="qc"><div class="empty">Loudness, true peak and delivery checks
+        appear once an edit is mastered.</div></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (p, opt) => {
+  const r = await fetch(p, opt);
+  const t = await r.text();
+  let d; try { d = JSON.parse(t); } catch { d = {error: t}; }
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+};
+const fmt = (n, d = 2) => (n === null || n === undefined) ? "—" : Number(n).toFixed(d);
+
+/* ---- capabilities: say plainly what this install cannot do ---- */
+async function loadCaps(){
+  try{
+    const d = await api("/api/capabilities");
+    const off = d.capabilities.filter(c => !c.available);
+    $("#caps").textContent = d.summary;
+    if(off.length){
+      const names = off.map(c => c.capability.replace(/_/g," ")).join(", ");
+      const b = document.createElement("div");
+      b.className = "banner";
+      b.innerHTML = "<b>Not available in this install</b>" +
+        names + ". Features needing them are hidden rather than shown as " +
+        "controls that would do nothing.";
+      $("main > div:last-child").prepend(b);
+    }
+  }catch(e){ $("#caps").textContent = "capabilities unavailable"; }
+}
+
+async function loadProfiles(){
+  try{
+    const d = await api("/api/delivery-profiles");
+    for(const p of d.profiles){
+      const o = document.createElement("option");
+      o.value = p.name;
+      o.textContent = `${p.name} — ${p.width}×${p.height} @${p.fps}`;
+      $("#deliver").appendChild(o);
+    }
+  }catch(e){}
+}
+
+/* ---- jobs ---- */
+function renderJobs(jobs){
+  const el = $("#jobs");
+  if(!jobs.length){ el.innerHTML = '<div class="empty">Nothing running.</div>'; return; }
+  el.innerHTML = "";
+  for(const j of jobs.slice(0, 6)){
+    const d = document.createElement("div");
+    d.className = "job";
+    const pct = Math.round((j.progress || 0) * 100);
+    d.innerHTML = `
+      <div class="job-head">
+        <span class="kind">${j.kind}</span>
+        <span class="state ${j.state}">${j.state}</span>
+      </div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="msg">${pct}% · ${j.elapsed ?? 0}s · ${j.message || j.error || ""}</div>`;
+    if(j.state === "running"){
+      const b = document.createElement("button");
+      b.className = "ghost"; b.textContent = "Cancel";
+      b.style.cssText = "margin-top:8px;padding:4px 10px;font-size:12px";
+      b.onclick = () => api(`/api/jobs/${j.id}/cancel`, {method:"POST"});
+      d.appendChild(b);
+    }
+    el.appendChild(d);
+  }
+}
+
+/* ---- signature element: the cut list ---- */
+function renderCuts(tl){
+  const strip = $("#cuts"), reasons = $("#reasons");
+  if(!tl || !tl.clips || !tl.clips.length){ return; }
+  const total = tl.duration || tl.clips.reduce((s,c)=>s+c.duration,0);
+  strip.innerHTML = `<div class="cutlist">` + tl.clips.map((c,i)=>{
+    const w = (c.duration / total) * 100;
+    const cls = [ c.beat_locked ? "" : "unlocked",
+                  c.quality_handling === "use_briefly" ? "salvage" : "" ]
+                .filter(Boolean).join(" ");
+    return `<div class="cut ${cls}" style="width:${w}%"
+      title="${(c.selection_reason||"").replace(/"/g,"&quot;")}">
+      <span>${i+1}</span><i></i></div>`;
+  }).join("") + `</div>
+  <div class="legend">
+    <b><span class="swatch" style="background:var(--locked)"></span>on the beat</b>
+    <b><span class="swatch" style="background:var(--unlocked)"></span>shifted off</b>
+    <b><span class="swatch" style="background:var(--caution)"></span>used briefly</b>
+    <b>${tl.clips.length} cuts · ${fmt(total)}s</b>
+  </div>`;
+
+  reasons.innerHTML = `<table><tr><th>#</th><th>Length</th><th>Why this shot</th></tr>` +
+    tl.clips.map((c,i)=>`<tr>
+      <td class="num">${i+1}</td>
+      <td class="num">${fmt(c.duration)}s</td>
+      <td class="reason">${c.selection_reason || "—"}
+        ${(c.treatments&&c.treatments.length)
+          ? `<div class="mono warn">repaired: ${c.treatments.join(", ")}</div>`:""}
+      </td></tr>`).join("") + `</table>`;
+}
+
+function renderQC(project){
+  const el = $("#qc");
+  const mix = project.timeline && project.timeline.mix;
+  const master = project.master;
+  let html = "";
+  if(mix){
+    html += `<table>
+      <tr><th>Sound</th><th>Measured</th></tr>
+      <tr><td>Loudness delivered</td><td class="num">${fmt(mix.achieved_lufs,1)} LUFS
+        <span class="mono">(target ${fmt(mix.target_lufs,0)})</span></td></tr>
+      <tr><td>Tracks</td><td class="num">${(mix.tracks||[]).length}</td></tr>
+      </table>`;
+    if(mix.reasons && mix.reasons.length){
+      html += `<div class="hint">${mix.reasons.join("<br>")}</div>`;
+    }
+  }
+  if(master && master.qc){
+    html += `<table style="margin-top:14px">
+      <tr><th>Delivery — ${master.profile}</th><th>Expected</th><th>Measured</th></tr>` +
+      master.qc.checks.map(c=>`<tr>
+        <td class="${c.status==='pass'?'ok':c.status==='fail'?'bad':'warn'}">
+          ${c.status.toUpperCase()} ${c.name}</td>
+        <td class="num">${c.expected||"—"}</td>
+        <td class="num">${c.measured||"—"}</td></tr>`).join("") + `</table>`;
+    if(master.qc.resolution_provenance !== "native"){
+      html += `<div class="banner"><b>Resolution</b>
+        ${master.qc.resolution_provenance} — some delivered detail is
+        interpolated, not captured.</div>`;
+    }
+  }
+  if(html) el.innerHTML = html;
+}
+
+async function loadProject(){
+  let p;
+  try{ p = await api("/api/project"); }catch(e){ return; }
+  if(p.timeline) renderCuts(p.timeline);
+  renderQC(p);
+  const master = p.master && p.master.path;
+  const final = master || (p.timeline ? null : null);
+  const src = master ? master.split("/").pop() : "alledits_final.mp4";
+  const url = `/media/store/output/${src}`;
+  const head = await fetch(url, {method:"HEAD"}).catch(()=>null);
+  if(head && head.ok){
+    $("#player").innerHTML =
+      `<video controls preload="metadata" src="${url}"></video>
+       <div class="hint"><a href="${url}?download=1">Download this render</a></div>`;
+  }
+}
+
+/* ---- actions ---- */
+async function submit(kind){
+  const params = {
+    clips_dir: $("#clips").value.trim(),
+    music: $("#music").value.trim(),
+    reference: $("#reference").value.trim(),
+    duration: Number($("#duration").value),
+    deliver: $("#deliver").value || null,
+  };
+  if(kind === "edit") params.instruction = $("#instruction").value.trim();
+  try{
+    await api("/api/jobs", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({kind, params})});
+    poll();
+  }catch(e){ alert(e.message); }
+}
+$("#run").onclick  = () => submit("edit");
+$("#auto").onclick = () => submit("autopilot");
+
+async function sendNote(dry){
+  const text = $("#note").value.trim();
+  if(!text) return;
+  try{
+    const d = await api("/api/note", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({text, dry_run: dry})});
+    let out = "";
+    if(d.changes && d.changes.length)
+      out += "<b>Will change:</b><br>" + d.changes.map(c=>"· "+c.rationale).join("<br>");
+    if(d.brief_delta) out += `<br>· re-plan with “${d.brief_delta}”`;
+    if(d.unresolved && d.unresolved.length)
+      out += `<br><span class="warn"><b>Could not act on:</b><br>` +
+             d.unresolved.map(u=>"· "+u).join("<br>") + "</span>";
+    if(!d.changes.length && !d.brief_delta)
+      out = `<span class="warn">Nothing in that note could be acted on.</span>`;
+    if(d.applied) out += "<br><b>Saved.</b> Run the edit again to rebuild with it.";
+    $("#noteout").innerHTML = out;
+  }catch(e){ $("#noteout").innerHTML = `<span class="bad">${e.message}</span>`; }
+}
+$("#check").onclick = () => sendNote(true);
+$("#apply").onclick = () => sendNote(false);
+
+/* ---- poll ---- */
+let lastStates = "";
+async function poll(){
+  try{
+    const d = await api("/api/jobs");
+    renderJobs(d.jobs);
+    const sig = d.jobs.map(j=>j.state+j.progress).join("|");
+    if(sig !== lastStates){
+      lastStates = sig;
+      if(d.jobs.some(j=>j.state==="succeeded")) loadProject();
+    }
+  }catch(e){}
+}
+loadCaps(); loadProfiles(); loadProject(); poll();
+setInterval(poll, 1200);
+</script>
+</body>
+</html>

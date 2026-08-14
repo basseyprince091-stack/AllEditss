@@ -8,7 +8,9 @@ Phases complete: **0 (vertical slice)**, **1 (brief → creative constraints)**,
 **2 (project state + human override)**, **3 (footage rescue)**, **4 (sound)**,
 **5 (FIND)**, **6 (MASTER)**, **7 (AUTOPILOT)**, **8 (STYLE)**, **9 (DIRECTOR)**, **10 (anchoring)**,
 **11 (model orchestration)**, **12 (nothing is wasted)**,
-**13 (shoot assistant)**, **14 (creator profile)**, **15 (async jobs)**.
+**13 (shoot assistant)**, **14 (creator profile)**, **15 (async jobs)**, **16 (web UI)**.
+
+The product shell is complete: engine, modes, jobs and interface.
 
 Every mode named in the specification is now implemented and verified.
 
@@ -592,7 +594,43 @@ environment does not have, and stubbing it would be the same failure as a fake
 model provider. The `JobQueue` interface is what a Redis/RQ worker pool would
 implement.
 
-**Test suite: 173/173 passing** (`python3 tests/test_alledits.py`).
+### Phase 16 — web interface (Spec §26)
+
+Built on the **standard library**. Every operation exposed here is long-running
+and already has a job queue behind it, so a framework would buy routing sugar and
+cost a dependency the deployment must carry. Zero dependencies means it runs
+wherever Python does.
+
+The spec sets two rules for this layer and both are load-bearing: *"do not spend
+excessive time on generic SaaS decoration before the engine works"*, and no mock
+buttons. So this is an API over the real engine plus one page that drives it.
+
+| endpoint | does |
+|---|---|
+| `GET /api/capabilities` | what this install genuinely cannot do |
+| `POST /api/jobs` | submits real work; bad paths are rejected as 400 at the boundary |
+| `GET /api/jobs/:id` | live progress, cancel, failure reason |
+| `GET /api/project` | timeline, selection reasons, mix, QC |
+| `POST /api/note` | DIRECTOR notes; **dry run is the default** |
+| `GET /media/...` | rendered video, range-served, traversal-guarded |
+
+**The signature of the interface is the cut list.** Each clip is a segment sized
+by its real duration, coloured by whether it is still locked to the beat or was
+shifted off, with the selection reason on hover. Every measured value is set in
+monospace, because measurement is what distinguishes this from a video tool.
+Verified in a headless browser: 13 cut segments, 14 reason rows, 11 QC checks,
+no console errors.
+
+Where a capability is absent the page **says so** and hides the control, rather
+than showing something that would quietly do nothing. A test walks the HTML and
+fails if any button lacks a handler.
+
+One defect found by testing: **HEAD returned 501**, and the page uses a HEAD
+request to decide whether a render exists before showing the player — so the
+player would never have appeared. Browsers also probe with HEAD before
+requesting ranges.
+
+**Test suite: 180/180 passing** (`python3 tests/test_alledits.py`).
 All five proof harnesses pass: `ab_brief_test`, `rescue_test`, `sound_test`,
 `find_test`, `master_test`.
 

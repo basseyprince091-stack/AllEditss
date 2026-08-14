@@ -2406,6 +2406,135 @@ def test_inline_queue_still_works_for_synchronous_callers():
     assert j.state == JobState.SUCCEEDED and q.get(j.id) is j
 
 
+# --------------------------------------------------------- web API (Phase 16)
+import contextlib as _ctx
+
+
+@_ctx.contextmanager
+def _server(workdir=None, port=8123):
+    import threading, time as _t
+    from alledits.web import make_server
+    srv = make_server(workdir or "/home/claude/webtest_wd", port=port)
+    th = threading.Thread(target=srv.serve_forever, daemon=True)
+    th.start()
+    _t.sleep(0.3)
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        srv.RequestHandlerClass.api.queue.shutdown(wait=False)
+
+
+def _req(url, method="GET", body=None, headers=None):
+    import json as _j, urllib.request, urllib.error
+    data = _j.dumps(body).encode() if body is not None else None
+    h = dict(headers or {})
+    if data:
+        h["Content-Type"] = "application/json"
+    r = urllib.request.Request(url, data=data, method=method, headers=h)
+    try:
+        with urllib.request.urlopen(r, timeout=30) as resp:
+            return resp.status, resp.read(), dict(resp.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(), dict(e.headers)
+
+
+def test_web_serves_the_page_and_core_endpoints():
+    import json as _j
+    with _server(port=8131) as base:
+        for path in ("/", "/api/health", "/api/capabilities",
+                     "/api/delivery-profiles", "/api/sequences", "/api/jobs"):
+            st, body, _ = _req(base + path)
+            assert st == 200, f"{path} -> {st}"
+            assert body, path
+        st, body, _ = _req(base + "/api/health")
+        assert _j.loads(body)["ok"] is True
+
+
+def test_web_rejects_bad_input_at_the_boundary():
+    """A bad path should be a 400 the user sees, not a job that starts and dies."""
+    import json as _j
+    with _server(port=8132) as base:
+        st, body, _ = _req(base + "/api/jobs", "POST", {"kind": "nonsense"})
+        assert st == 400 and "kind must be" in _j.loads(body)["error"]
+        st, body, _ = _req(base + "/api/jobs", "POST",
+                           {"kind": "edit", "params": {"clips_dir": "/nope"}})
+        assert st == 400 and "does not exist" in _j.loads(body)["error"]
+        st, _, _ = _req(base + "/api/jobs/does_not_exist")
+        assert st == 404
+
+
+def test_web_blocks_path_traversal_out_of_the_workdir():
+    with _server(port=8133) as base:
+        st, _, _ = _req(base + "/media/../../../etc/passwd")
+        assert st in (403, 404), f"traversal returned {st}"
+
+
+def test_web_supports_head_and_range_for_video():
+    """The page asks HEAD before showing a player, and browsers will not scrub
+    without ranges — HEAD returned 501 until this was caught."""
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as d:
+        media = Path(d) / "store" / "output"
+        media.mkdir(parents=True)
+        (media / "clip.bin").write_bytes(os.urandom(4096))
+        with _server(workdir=d, port=8134) as base:
+            st, _, h = _req(base + "/media/store/output/clip.bin", "HEAD")
+            assert st == 200 and h.get("Accept-Ranges") == "bytes"
+            assert int(h["Content-Length"]) == 4096
+            st, body, h = _req(base + "/media/store/output/clip.bin",
+                               headers={"Range": "bytes=0-1023"})
+            assert st == 206 and len(body) == 1024
+            assert h["Content-Range"] == "bytes 0-1023/4096"
+
+
+def test_web_runs_a_real_job_end_to_end():
+    """Not a mock: this submits work and waits for a genuine result."""
+    import json as _j, tempfile, time as _t
+    with tempfile.TemporaryDirectory() as d:
+        with _server(workdir=d, port=8135) as base:
+            st, body, _ = _req(base + "/api/jobs", "POST", {
+                "kind": "ingest",
+                "params": {"clips_dir": str(CLIPS), "workdir": d}})
+            assert st == 201
+            job_id = _j.loads(body)["id"]
+            for _ in range(120):
+                _t.sleep(1)
+                _, b, _ = _req(f"{base}/api/jobs/{job_id}")
+                j = _j.loads(b)
+                if j["state"] in ("succeeded", "failed", "cancelled"):
+                    break
+            assert j["state"] == "succeeded", j.get("error")
+            assert j["result"]["shots"] > 0
+            assert len(j["steps"]) > 1, "progress should be reported, not just the end"
+
+
+def test_web_note_endpoint_defaults_to_not_saving():
+    """Checking a note must never mutate the project by accident."""
+    import json as _j
+    with _server(workdir="/home/claude/delwork2", port=8136) as base:
+        st, body, _ = _req(base + "/api/note", "POST",
+                           {"text": "hold the second shot longer"})
+        assert st == 200
+        d = _j.loads(body)
+        assert d["applied"] is False, "dry run must be the default"
+        assert d["changes"], "the note should have been understood"
+        st, body, _ = _req(base + "/api/note", "POST", {"dry_run": True})
+        assert st == 400, "an empty note should be refused"
+
+
+def test_web_page_declares_missing_capabilities_rather_than_faking_controls():
+    html = (Path("alledits/web/static/index.html")).read_text()
+    assert "/api/capabilities" in html, "the page must read real capability state"
+    assert "would do nothing" in html, "it must say why a control is absent"
+    # No control may be wired to nothing.
+    import re as _re
+    for m in _re.finditer(r'<button[^>]*id="([^"]+)"', html):
+        assert f'$("#{m.group(1)}").onclick' in html, \
+            f"button #{m.group(1)} has no handler — a mock button"
+
+
 if __name__ == "__main__":
     # Collection is by globals(), so two tests sharing a name would silently
     # shadow each other and one would never run. That happened once and cost

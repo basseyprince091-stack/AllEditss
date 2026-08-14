@@ -348,6 +348,14 @@ def _queue(a):
     return BackgroundJobQueue(root=root)
 
 
+def cmd_serve(a):
+    """Run the web interface (Spec 26)."""
+    from .web import serve
+    serve(a.workdir, port=a.port, host=a.host, jobs_dir=a.jobs_dir,
+          styles_dir=a.styles, profile_path=a.profile_path)
+    return 0
+
+
 def cmd_jobs(a):
     """Submit, watch, list and cancel background jobs (Spec 28)."""
     import time
@@ -699,6 +707,15 @@ def main(argv=None):
                     help="concepts to stop explaining, comma-separated")
     pr.add_argument("--profile-path", dest="profile_path", default=None)
     pr.set_defaults(fn=cmd_profile)
+
+    sv = sub.add_parser("serve", help="run the web interface")
+    sv.add_argument("--workdir", default="./alledits_work")
+    sv.add_argument("--port", type=int, default=8080)
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--jobs-dir", dest="jobs_dir", default=None)
+    sv.add_argument("--styles", default=None)
+    sv.add_argument("--profile-path", dest="profile_path", default=None)
+    sv.set_defaults(fn=cmd_serve)
 
     jb = sub.add_parser("jobs", help="run long operations in the background")
     jb.add_argument("action", choices=["submit", "list", "show", "cancel"])
